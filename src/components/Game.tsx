@@ -240,6 +240,9 @@ const Game: React.FC = () => {
                     <button onClick={handleNextLevel} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px', marginLeft: '10px' }}>
                         Next Level
                     </button>
+                    <button onClick={handleMainMenu} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px', marginLeft: '10px' }}>
+                        Main Menu
+                    </button>
                     <button
                         onClick={handleShowLeaderboard}
                         style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', opacity: isFirebaseConfigured ? 1 : 0.5 }}

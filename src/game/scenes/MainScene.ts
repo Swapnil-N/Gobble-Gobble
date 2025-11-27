@@ -6,6 +6,7 @@ import powerupImg from '../../assets/powerup.png';
 import { gameEvents, EVENTS } from '../events';
 import Farmer from '../objects/Farmer';
 import { LevelGenerator } from '../utils/LevelGenerator';
+import { SoundManager } from '../utils/SoundManager';
 
 export default class MainScene extends Phaser.Scene {
     private turkey?: Phaser.Physics.Arcade.Sprite;
@@ -28,9 +29,11 @@ export default class MainScene extends Phaser.Scene {
     private powerupTimer?: Phaser.Time.TimerEvent;
     private currentLevel: number = 1;
     private currentMap: number[][] = [];
+    private soundManager: SoundManager;
 
     constructor() {
         super('MainScene');
+        this.soundManager = new SoundManager();
     }
 
     preload() {
@@ -276,8 +279,12 @@ export default class MainScene extends Phaser.Scene {
         this.score += 1;
         this.cornCount++;
 
+        // Play eat sound
+        this.soundManager.playEat();
+
         // Emit score change event
         gameEvents.emit(EVENTS.SCORE_CHANGED, this.score);
+
 
         // Check win condition
         if (this.cornCount >= this.totalCorn) {
@@ -286,10 +293,13 @@ export default class MainScene extends Phaser.Scene {
     }
 
     private collectPowerup(turkey: any, powerup: any) {
-        // Remove the power-up
+        // Remove the powerup
         powerup.disableBody(true, true);
 
-        // Activate power-up mode
+        // Play powerup sound
+        this.soundManager.playPowerUp();
+
+        // Activate powerup for X seconds
         this.activatePowerup();
     }
 
@@ -308,7 +318,7 @@ export default class MainScene extends Phaser.Scene {
             this.powerupTimer.remove();
         }
 
-        // Set timer to deactivate power-up
+        // Set timer to deactivate powerup
         this.powerupTimer = this.time.addEvent({
             delay: 10000,
             callback: () => {
@@ -331,6 +341,9 @@ export default class MainScene extends Phaser.Scene {
             // Respawn farmer at farthest corner
             this.respawnFarmer(farmerObj);
         } else if (!farmerObj.isScared) {
+            // Play die sound
+            this.soundManager.playDie();
+
             // Normal collision - lose a life
             this.lives--;
             gameEvents.emit(EVENTS.LIVES_CHANGED, this.lives);
@@ -409,8 +422,10 @@ export default class MainScene extends Phaser.Scene {
         this.gameOver = true;
         this.physics.pause();
 
-        // Emit win event
-        gameEvents.emit(EVENTS.GAME_WIN, this.score);
+        // Play win sound
+        this.soundManager.playWin();
+
+        gameEvents.emit(EVENTS.GAME_WIN);
     }
 
     private handleGameStart() {
