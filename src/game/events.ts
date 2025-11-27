@@ -10,4 +10,5 @@ export const EVENTS = {
     GAME_WIN: 'game-win',
     GAME_START: 'game-start',
     GAME_RESTART: 'game-restart',
+    GAME_NEXT_LEVEL: 'game-next-level',
 };

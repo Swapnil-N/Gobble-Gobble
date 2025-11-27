@@ -61,6 +61,14 @@ const Game: React.FC = () => {
         gameEvents.emit(EVENTS.GAME_START);
     };
 
+    const handleNextLevel = () => {
+        setGameState('PLAYING');
+        setIsScoreSaved(false);
+        setPlayerName('');
+        gameEvents.emit(EVENTS.GAME_NEXT_LEVEL);
+        gameEvents.emit(EVENTS.GAME_START);
+    };
+
     const handleSaveScore = async () => {
         if (!playerName) return;
         const success = await saveScore({
@@ -173,8 +181,40 @@ const Game: React.FC = () => {
                     <h1 style={{ color: '#00ff00' }}>YOU WIN!</h1>
                     <p style={{ fontSize: '24px' }}>Final Score: {score}</p>
 
-                    <button onClick={handlePlayAgain} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginTop: '20px' }}>
+                    {isFirebaseConfigured ? (
+                        !isScoreSaved ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '20px' }}>
+                                <input
+                                    type="text"
+                                    placeholder="Enter Name"
+                                    value={playerName}
+                                    onChange={(e) => setPlayerName(e.target.value)}
+                                    style={{ padding: '10px', fontSize: '16px', marginBottom: '10px' }}
+                                />
+                                <button onClick={handleSaveScore} style={{ padding: '5px 15px', fontSize: '16px', cursor: 'pointer' }}>
+                                    Save Score
+                                </button>
+                            </div>
+                        ) : (
+                            <p style={{ color: 'green', marginBottom: '20px' }}>Score Saved!</p>
+                        )
+                    ) : (
+                        <p style={{ color: '#aaa', marginBottom: '20px' }}>Offline Mode - Score saving disabled</p>
+                    )}
+
+                    <button onClick={handlePlayAgain} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px' }}>
                         Play Again
+                    </button>
+                    {level < 2 && (
+                        <button onClick={handleNextLevel} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px', marginLeft: '10px' }}>
+                            Next Level
+                        </button>
+                    )}
+                    <button
+                        onClick={handleShowLeaderboard}
+                        style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', opacity: isFirebaseConfigured ? 1 : 0.5 }}
+                    >
+                        Leaderboard
                     </button>
                 </div>
             )}

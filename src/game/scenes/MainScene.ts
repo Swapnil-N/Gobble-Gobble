@@ -25,6 +25,7 @@ export default class MainScene extends Phaser.Scene {
     private turkeyStartY: number = 0;
     private powerupActive: boolean = false;
     private powerupTimer?: Phaser.Time.TimerEvent;
+    private currentLevel: number = 1;
 
     constructor() {
         super('MainScene');
@@ -37,7 +38,13 @@ export default class MainScene extends Phaser.Scene {
         this.load.image('powerup', powerupImg);
     }
 
-    create() {
+    create(data?: { isRestart: boolean, level?: number }) {
+        if (data?.level) {
+            this.currentLevel = data.level;
+        } else if (!data?.isRestart) {
+            // Reset to level 1 on fresh start
+            this.currentLevel = 1;
+        }
         this.score = 0;
         this.lives = 3;
         this.cornCount = 0;
@@ -45,37 +52,25 @@ export default class MainScene extends Phaser.Scene {
         this.gameOver = false;
         this.powerupActive = false;
 
-        // Pause scene until game starts
-        this.physics.pause();
+        // Pause scene until game starts, unless it's a restart
+        if (!data?.isRestart) {
+            this.physics.pause();
+        }
 
         // Listen for game start event (use on instead of once for restarts)
-        gameEvents.on(EVENTS.GAME_START, () => {
-            this.physics.resume();
-        });
+        gameEvents.on(EVENTS.GAME_START, this.handleGameStart, this);
 
         // Listen for restart event
-        gameEvents.on(EVENTS.GAME_RESTART, () => {
-            this.handleRestart();
-            // Resume physics when restarting
-            this.physics.resume();
-        });
+        gameEvents.on(EVENTS.GAME_RESTART, this.handleRestart, this);
 
-        // Hardcoded map - 1 = wall, 0 = empty space
-        const map = [
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
-            [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
-            [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
-            [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
-            [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        ];
+        // Listen for next level event
+        gameEvents.on(EVENTS.GAME_NEXT_LEVEL, this.handleNextLevel, this);
+
+        // Clean up listeners when scene shuts down
+        this.events.on(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+
+        // Get map for current level
+        const map = this.getMap(this.currentLevel);
 
         const mapWidth = map[0].length;
         const mapHeight = map.length;
@@ -193,11 +188,55 @@ export default class MainScene extends Phaser.Scene {
         // Set up arrow keys
         if (this.input.keyboard) {
             this.cursors = this.input.keyboard.createCursorKeys();
+
+            // Cheat code: Press '1' to win
+            this.input.keyboard.on('keydown-ONE', () => {
+                this.handleWin();
+            });
         }
 
         // Emit initial score and lives
         gameEvents.emit(EVENTS.SCORE_CHANGED, this.score);
         gameEvents.emit(EVENTS.LIVES_CHANGED, this.lives);
+        gameEvents.emit(EVENTS.LEVEL_CHANGED, this.currentLevel);
+    }
+
+    private getMap(level: number): number[][] {
+        if (level === 2) {
+            // Level 2 Map - More complex with more walls
+            return [
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+                [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1],
+                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+                [1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+                [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+                [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1],
+                [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+                [1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+                [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ];
+        }
+
+        // Level 1 Map (Default)
+        return [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+            [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
+            [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
+            [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
+            [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        ];
     }
 
     private collectCorn(turkey: any, corn: any) {
@@ -345,7 +384,22 @@ export default class MainScene extends Phaser.Scene {
         gameEvents.emit(EVENTS.GAME_WIN, this.score);
     }
 
-    private handleRestart() {
+    private handleGameStart() {
+        this.physics.resume();
+    }
+
+    private shutdown() {
+        gameEvents.off(EVENTS.GAME_START, this.handleGameStart, this);
+        gameEvents.off(EVENTS.GAME_RESTART, this.handleRestart, this);
+        gameEvents.off(EVENTS.GAME_NEXT_LEVEL, this.handleNextLevel, this);
+    }
+
+    private handleNextLevel() {
+        this.cleanup();
+        this.scene.restart({ isRestart: true, level: this.currentLevel + 1 });
+    }
+
+    private cleanup() {
         // Clean up power-up timer
         if (this.powerupTimer) {
             this.powerupTimer.remove();
@@ -362,9 +416,13 @@ export default class MainScene extends Phaser.Scene {
         // Remove all tweens and timers
         this.tweens.killAll();
         this.time.removeAllEvents();
+    }
 
-        // Restart the scene
-        this.scene.restart();
+    private handleRestart() {
+        this.cleanup();
+
+        // Restart the scene with isRestart flag, keeping current level
+        this.scene.restart({ isRestart: true, level: this.currentLevel });
     }
 
     update() {
