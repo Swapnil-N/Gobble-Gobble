@@ -5,6 +5,7 @@ import farmerImg from '../../assets/farmer_transparent.png';
 import powerupImg from '../../assets/powerup.png';
 import { gameEvents, EVENTS } from '../events';
 import Farmer from '../objects/Farmer';
+import { LevelGenerator } from '../utils/LevelGenerator';
 
 export default class MainScene extends Phaser.Scene {
     private turkey?: Phaser.Physics.Arcade.Sprite;
@@ -26,6 +27,7 @@ export default class MainScene extends Phaser.Scene {
     private powerupActive: boolean = false;
     private powerupTimer?: Phaser.Time.TimerEvent;
     private currentLevel: number = 1;
+    private currentMap: number[][] = [];
 
     constructor() {
         super('MainScene');
@@ -40,10 +42,15 @@ export default class MainScene extends Phaser.Scene {
 
     create(data?: { isRestart: boolean, level?: number }) {
         if (data?.level) {
-            this.currentLevel = data.level;
+            // If level changed, generate new map (unless it's a restart of same level)
+            if (this.currentLevel !== data.level) {
+                this.currentLevel = data.level;
+                this.currentMap = []; // Clear map to force regeneration
+            }
         } else if (!data?.isRestart) {
             // Reset to level 1 on fresh start
             this.currentLevel = 1;
+            this.currentMap = [];
         }
         this.score = 0;
         this.lives = 3;
@@ -114,9 +121,18 @@ export default class MainScene extends Phaser.Scene {
                     const wall = this.add.rectangle(x, y, this.tileSize, this.tileSize, 0x0000ff);
                     this.physics.add.existing(wall, true);
                     this.walls.add(wall);
-                } else if (map[row][col] === 0) {
-                    // Check if this should be a power-up
-                    const isPowerupLocation = powerupPositions.some(p => p.row === row && p.col === col);
+                } else if (map[row][col] === 0 || map[row][col] === 2) {
+                    // Check if this should be a power-up (from static map or generated map)
+                    // For static maps (level 1 & 2), we use the powerupPositions array
+                    // For generated maps (level 3+), we use the map value 2
+
+                    let isPowerupLocation = false;
+
+                    if (this.currentLevel <= 2) {
+                        isPowerupLocation = powerupPositions.some(p => p.row === row && p.col === col);
+                    } else {
+                        isPowerupLocation = map[row][col] === 2;
+                    }
 
                     if (isPowerupLocation) {
                         // Power-up pill
@@ -202,9 +218,33 @@ export default class MainScene extends Phaser.Scene {
     }
 
     private getMap(level: number): number[][] {
-        if (level === 2) {
-            // Level 2 Map - More complex with more walls
-            return [
+        // If we already have a map for this level (and it's not a restart of a previous level we cleared), return it
+        // Actually, we want to keep the map if we are restarting the SAME level.
+        // If we moved to a NEW level, create should have cleared currentMap.
+        if (this.currentMap.length > 0) {
+            return this.currentMap;
+        }
+
+        if (level === 1) {
+            // Level 1 Map (Default)
+            this.currentMap = [
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
+                [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
+                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
+                [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ];
+        } else if (level === 2) {
+            // Level 2 Map
+            this.currentMap = [
                 [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
                 [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
                 [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1],
@@ -219,24 +259,13 @@ export default class MainScene extends Phaser.Scene {
                 [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                 [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
             ];
+        } else {
+            // Level 3+ : Procedural Generation
+            const generator = new LevelGenerator(20, 13);
+            this.currentMap = generator.generate();
         }
 
-        // Level 1 Map (Default)
-        return [
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
-            [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
-            [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
-            [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
-            [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        ];
+        return this.currentMap;
     }
 
     private collectCorn(turkey: any, corn: any) {

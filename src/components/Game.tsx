@@ -69,6 +69,35 @@ const Game: React.FC = () => {
         gameEvents.emit(EVENTS.GAME_START);
     };
 
+    const handleMainMenu = () => {
+        setGameState('START');
+        setScore(0);
+        setLevel(1);
+        setLives(3);
+        setIsScoreSaved(false);
+        setPlayerName('');
+        // We need to restart the game instance completely or just reset the scene
+        // Simplest is to emit restart which resets to level 1 if we handle it right,
+        // but our restart logic keeps current level.
+        // So we might need a full reload or a specific event.
+        // For now, let's just destroy and recreate the game instance if possible,
+        // OR emit a special event.
+        // Actually, let's just use GAME_RESTART but we need to tell MainScene to go to Level 1.
+        // But MainScene doesn't listen for a "Go To Level 1" event specifically.
+        // Let's just destroy the game instance in useEffect cleanup and let it recreate?
+        // No, that's for component unmount.
+
+        // Let's emit a restart with data? No, emit only takes args.
+        // Let's just reload the page for Main Menu for now to be safe and clean?
+        // Or better: emit GAME_RESTART and rely on the fact that we setLevel(1) here?
+        // But MainScene tracks its own level.
+
+        // Let's add a hack: Emit GAME_RESTART. MainScene.ts handles restart.
+        // We need to signal MainScene to reset level.
+        // Let's just reload the window for "Main Menu" to ensure full reset.
+        window.location.reload();
+    };
+
     const handleSaveScore = async () => {
         if (!playerName) return;
         const success = await saveScore({
@@ -162,6 +191,9 @@ const Game: React.FC = () => {
                     <button onClick={handlePlayAgain} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px' }}>
                         Play Again
                     </button>
+                    <button onClick={handleMainMenu} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px' }}>
+                        Main Menu
+                    </button>
                     <button
                         onClick={handleShowLeaderboard}
                         style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', opacity: isFirebaseConfigured ? 1 : 0.5 }}
@@ -205,11 +237,9 @@ const Game: React.FC = () => {
                     <button onClick={handlePlayAgain} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px' }}>
                         Play Again
                     </button>
-                    {level < 2 && (
-                        <button onClick={handleNextLevel} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px', marginLeft: '10px' }}>
-                            Next Level
-                        </button>
-                    )}
+                    <button onClick={handleNextLevel} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px', marginLeft: '10px' }}>
+                        Next Level
+                    </button>
                     <button
                         onClick={handleShowLeaderboard}
                         style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', opacity: isFirebaseConfigured ? 1 : 0.5 }}

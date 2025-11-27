@@ -74,16 +74,18 @@ export class LevelGenerator {
     }
 
     private populateItems() {
-        // Place Super Corn in corners
+        // Place Powerups (2) in corners or random spots
         // Simple logic: just replace some 0s with 2s
-        let superCorns = 0;
-        while (superCorns < 4) {
+        let powerups = 0;
+        let attempts = 0;
+        while (powerups < 4 && attempts < 100) {
             const x = Math.floor(Math.random() * this.width);
             const y = Math.floor(Math.random() * this.height);
             if (this.map[y][x] === 0) {
-                this.map[y][x] = 2;
-                superCorns++;
+                this.map[y][x] = 2; // 2 represents powerup
+                powerups++;
             }
+            attempts++;
         }
     }
 }
