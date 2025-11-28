@@ -195,7 +195,7 @@ export default class MainScene extends Phaser.Scene {
             const farmer = new Farmer(this, farmerX, farmerY, 'farmer', this.turkey);
             const farmerScale = (this.tileSize * 0.8) / farmer.width;
             farmer.setScale(farmerScale);
-            this.farmers.add(farmer);
+            this.farmers!.add(farmer);
         });
 
         // Add collision between farmers and walls
@@ -271,7 +271,7 @@ export default class MainScene extends Phaser.Scene {
         return this.currentMap;
     }
 
-    private collectCorn(turkey: any, corn: any) {
+    private collectCorn(_turkey: any, corn: any) {
         // Remove the corn
         corn.disableBody(true, true);
 
@@ -292,7 +292,7 @@ export default class MainScene extends Phaser.Scene {
         }
     }
 
-    private collectPowerup(turkey: any, powerup: any) {
+    private collectPowerup(_turkey: any, powerup: any) {
         // Remove the powerup
         powerup.disableBody(true, true);
 
@@ -328,7 +328,7 @@ export default class MainScene extends Phaser.Scene {
         });
     }
 
-    private handleFarmerCollision(turkey: any, farmer: any) {
+    private handleFarmerCollision(_turkey: any, farmer: any) {
         if (this.gameOver) return;
 
         const farmerObj = farmer as Farmer;
