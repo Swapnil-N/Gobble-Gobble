@@ -61,7 +61,16 @@ Collect all the corn pellets in the maze to win the level!
 ### Scoring
 - Corn: **1 point**
 - Scared Farmer: **10 points**
-- Bonus points for completing levels quickly
+- **Cumulative across levels** - Score carries over when advancing
+
+### Levels
+- **Level 1-2:** Handcrafted maze layouts
+- **Level 3+:** Procedurally generated infinite mazes
+- Click **"Next Level"** after winning to advance
+- Click **"Play Again"** to restart current level
+
+### Developer Shortcuts
+- Press **'1' key** during gameplay to instantly win (for testing)
 
 ---
 
@@ -161,26 +170,45 @@ npm run lint
 ```
 gobble-gobble/
 ├── src/
-│   ├── assets/          # Game images and sprites
-│   ├── components/      # React components
-│   │   └── Game.tsx     # Main game component with UI
-│   ├── config/          # Configuration files
-│   │   └── firebase.ts  # Firebase initialization
-│   ├── game/            # Phaser game logic
-│   │   ├── events.ts    # Game event system
-│   │   ├── objects/     # Game objects (Turkey, Farmer)
-│   │   ├── scenes/      # Game scenes
-│   │   │   └── MainScene.ts
-│   │   ├── utils/       # Utility functions
-│   │   └── phaserConfig.ts
-│   ├── services/        # Backend services
-│   │   ├── firebase.ts  # Score & leaderboard service
-│   │   └── playerData.ts # Advanced player stats
-│   └── utils/           # Helper utilities
-├── .env                 # Environment variables (not in git)
-├── .env.example         # Template for .env
-└── package.json         # Project dependencies
+│   ├── assets/               # Game images and sprites
+│   ├── components/           # React components
+│   │   └── Game.tsx          # Main game wrapper with UI overlays
+│   ├── config/               # Application configuration
+│   │   └── firebase.ts       # Firebase initialization
+│   ├── services/             # Business logic services
+│   │   └── firebase.ts       # Score & leaderboard operations
+│   └── game/                 # Phaser game engine
+│       ├── config/           # Game configuration
+│       │   ├── GameConfig.ts # Constants, speeds, positions
+│       │   └── LevelData.ts  # Level maps (1-2 handcrafted, 3+ procedural)
+│       ├── objects/          # Game entities (OOP)
+│       │   ├── Turkey.ts     # Player entity with input handling
+│       │   ├── Farmer.ts     # Enemy AI with pathfinding
+│       │   ├── Corn.ts       # Collectible item
+│       │   └── Powerup.ts    # Powerup with pulse animation
+│       ├── services/         # Game systems (managers)
+│       │   ├── EntitySpawner.ts    # Entity creation & positioning
+│       │   ├── CollisionHandler.ts # Collision detection & scoring
+│       │   └── PowerUpManager.ts   # Powerup state management
+│       ├── utils/            # Utility functions
+│       │   ├── LevelGenerator.ts   # Procedural maze generation
+│       │   └── SoundManager.ts     # Audio playback wrapper
+│       ├── scenes/           # Phaser scenes
+│       │   └── MainScene.ts  # Main game orchestrator (~170 lines)
+│       ├── events.ts         # React ↔ Phaser event bridge
+│       └── phaserConfig.ts   # Phaser engine configuration
+├── .env                      # Environment variables (not in git)
+├── .env.example              # Template for .env
+└── package.json              # Project dependencies
 ```
+
+### Architecture
+
+The project follows a **modular, service-oriented architecture**:
+- **Layered Design:** React UI ↔ Event System ↔ Phaser Game Engine
+- **Separation of Concerns:** Configuration, entities, services, and scenes are isolated
+- **SOLID Principles:** Single responsibility per module, dependency injection
+- **Orchestrator Pattern:** `MainScene` delegates to specialized services rather than implementing logic
 
 ### Technology Stack
 
@@ -196,10 +224,10 @@ gobble-gobble/
 
 ### Collections
 
-The game uses two main Firestore collections:
+The game uses Firestore to store scores in the `scores` collection:
 
 #### `scores`
-Stores individual game scores for the leaderboard.
+Stores individual game scores for the global leaderboard.
 
 ```typescript
 {
@@ -210,11 +238,7 @@ Stores individual game scores for the leaderboard.
 }
 ```
 
-#### `gameSessions` (Advanced - see `playerData.ts`)
-Stores complete game session data for tracking.
-
-#### `playerStats` (Advanced - see `playerData.ts`)
-Aggregated player statistics over time.
+**All players share the same leaderboard** - compete globally!
 
 ---
 
