@@ -54,19 +54,19 @@ const Game: React.FC = () => {
     };
 
     const handlePlayAgain = () => {
+        console.log('Game: handlePlayAgain emitting GAME_RESTART');
         setGameState('PLAYING');
         setIsScoreSaved(false);
         setPlayerName('');
         gameEvents.emit(EVENTS.GAME_RESTART);
-        gameEvents.emit(EVENTS.GAME_START);
     };
 
     const handleNextLevel = () => {
+        console.log('Game: handleNextLevel emitting GAME_NEXT_LEVEL');
         setGameState('PLAYING');
         setIsScoreSaved(false);
         setPlayerName('');
         gameEvents.emit(EVENTS.GAME_NEXT_LEVEL);
-        gameEvents.emit(EVENTS.GAME_START);
     };
 
     const handleMainMenu = () => {
@@ -76,25 +76,6 @@ const Game: React.FC = () => {
         setLives(3);
         setIsScoreSaved(false);
         setPlayerName('');
-        // We need to restart the game instance completely or just reset the scene
-        // Simplest is to emit restart which resets to level 1 if we handle it right,
-        // but our restart logic keeps current level.
-        // So we might need a full reload or a specific event.
-        // For now, let's just destroy and recreate the game instance if possible,
-        // OR emit a special event.
-        // Actually, let's just use GAME_RESTART but we need to tell MainScene to go to Level 1.
-        // But MainScene doesn't listen for a "Go To Level 1" event specifically.
-        // Let's just destroy the game instance in useEffect cleanup and let it recreate?
-        // No, that's for component unmount.
-
-        // Let's emit a restart with data? No, emit only takes args.
-        // Let's just reload the page for Main Menu for now to be safe and clean?
-        // Or better: emit GAME_RESTART and rely on the fact that we setLevel(1) here?
-        // But MainScene tracks its own level.
-
-        // Let's add a hack: Emit GAME_RESTART. MainScene.ts handles restart.
-        // We need to signal MainScene to reset level.
-        // Let's just reload the window for "Main Menu" to ensure full reset.
         window.location.reload();
     };
 
@@ -234,21 +215,24 @@ const Game: React.FC = () => {
                         <p style={{ color: '#aaa', marginBottom: '20px' }}>Offline Mode - Score saving disabled</p>
                     )}
 
-                    <button onClick={handlePlayAgain} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px' }}>
-                        Play Again
-                    </button>
-                    <button onClick={handleNextLevel} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px', marginLeft: '10px' }}>
-                        Next Level
-                    </button>
-                    <button onClick={handleMainMenu} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', marginBottom: '10px', marginLeft: '10px' }}>
-                        Main Menu
-                    </button>
-                    <button
-                        onClick={handleShowLeaderboard}
-                        style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', opacity: isFirebaseConfigured ? 1 : 0.5 }}
-                    >
-                        Leaderboard
-                    </button>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                        <button onClick={handlePlayAgain} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer' }}>
+                            Play Again
+                        </button>
+                        <button onClick={handleNextLevel} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer' }}>
+                            Next Level
+                        </button>
+                        <button onClick={handleMainMenu} style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer' }}>
+                            Main Menu
+                        </button>
+                        <button
+                            onClick={handleShowLeaderboard}
+                            style={{ padding: '10px 20px', fontSize: '20px', cursor: 'pointer', opacity: isFirebaseConfigured ? 1 : 0.5 }}
+                        >
+                            Leaderboard
+                        </button>
+                    </div>
                 </div>
             )}
 

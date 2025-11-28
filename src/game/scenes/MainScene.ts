@@ -4,36 +4,27 @@ import cornImg from '../../assets/corn_sprite_1764017342942.png';
 import farmerImg from '../../assets/farmer_transparent.png';
 import powerupImg from '../../assets/powerup.png';
 import { gameEvents, EVENTS } from '../events';
-import Farmer from '../objects/Farmer';
-import { LevelGenerator } from '../utils/LevelGenerator';
 import { SoundManager } from '../utils/SoundManager';
+import { GameConfig } from '../config/GameConfig';
+import { PowerUpManager } from '../services/PowerUpManager';
+import { EntitySpawner } from '../services/EntitySpawner';
+import { CollisionHandler } from '../services/CollisionHandler';
 
 export default class MainScene extends Phaser.Scene {
-    private turkey?: Phaser.Physics.Arcade.Sprite;
     private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
-    private walls?: Phaser.Physics.Arcade.StaticGroup;
-    private corn?: Phaser.Physics.Arcade.StaticGroup;
-    private powerups?: Phaser.Physics.Arcade.StaticGroup;
-    private farmers?: Phaser.Physics.Arcade.Group;
-    private tileSize: number = 0;
-    private offsetX: number = 0;
-    private offsetY: number = 0;
     private score: number = 0;
     private lives: number = 3;
-    private cornCount: number = 0;
-    private totalCorn: number = 0;
-    private gameOver: boolean = false;
-    private turkeyStartX: number = 0;
-    private turkeyStartY: number = 0;
-    private powerupActive: boolean = false;
-    private powerupTimer?: Phaser.Time.TimerEvent;
     private currentLevel: number = 1;
-    private currentMap: number[][] = [];
-    private soundManager: SoundManager;
+    private gameOver: boolean = false;
+
+    // Managers
+    private soundManager!: SoundManager;
+    private powerUpManager!: PowerUpManager;
+    private entitySpawner!: EntitySpawner;
+    private collisionHandler!: CollisionHandler;
 
     constructor() {
         super('MainScene');
-        this.soundManager = new SoundManager();
     }
 
     preload() {
@@ -43,168 +34,62 @@ export default class MainScene extends Phaser.Scene {
         this.load.image('powerup', powerupImg);
     }
 
-    create(data?: { isRestart: boolean, level?: number }) {
-        if (data?.level) {
-            // If level changed, generate new map (unless it's a restart of same level)
-            if (this.currentLevel !== data.level) {
-                this.currentLevel = data.level;
-                this.currentMap = []; // Clear map to force regeneration
-            }
-        } else if (!data?.isRestart) {
-            // Reset to level 1 on fresh start
-            this.currentLevel = 1;
-            this.currentMap = [];
-        }
-        this.score = 0;
-        this.lives = 3;
-        this.cornCount = 0;
-        this.totalCorn = 0;
-        this.gameOver = false;
-        this.powerupActive = false;
+    init(data?: { isRestart: boolean, level?: number, score?: number, autoStart?: boolean }) {
+        console.log('MainScene: init', data);
 
-        // Pause scene until game starts, unless it's a restart
-        if (!data?.isRestart) {
+        // Initialize state from data BEFORE create runs
+        if (data?.level !== undefined) {
+            this.currentLevel = data.level;
+        } else if (!data?.isRestart) {
+            this.currentLevel = 1;
+        }
+
+        if (data?.score !== undefined) {
+            this.score = data.score;
+        } else if (!data?.isRestart) {
+            this.score = 0;
+        }
+    }
+
+    create(data?: { isRestart: boolean, level?: number, score?: number, autoStart?: boolean }) {
+        console.log('MainScene: create', { level: this.currentLevel, score: this.score, data });
+
+        this.lives = GameConfig.STARTING_LIVES;
+        this.gameOver = false;
+
+        // IMPORTANT: Handle physics state FIRST before spawning entities
+        // This prevents collision callbacks from firing during entity creation
+        if (data?.autoStart) {
+            console.log('MainScene: Keeping physics running (autoStart)');
+            // Physics is already running after restart, keep it that way
+        } else {
+            console.log('MainScene: Pausing physics (wait for start)');
             this.physics.pause();
         }
 
-        // Listen for game start event (use on instead of once for restarts)
-        gameEvents.on(EVENTS.GAME_START, this.handleGameStart, this);
+        // Initialize Managers
+        this.soundManager = new SoundManager();
+        this.powerUpManager = new PowerUpManager(this);
+        this.entitySpawner = new EntitySpawner(this);
+        this.collisionHandler = new CollisionHandler(
+            this,
+            this.entitySpawner,
+            this.powerUpManager,
+            this.soundManager
+        );
 
-        // Listen for restart event
-        gameEvents.on(EVENTS.GAME_RESTART, this.handleRestart, this);
+        // Setup Event Listeners
+        this.setupEventListeners();
 
-        // Listen for next level event
-        gameEvents.on(EVENTS.GAME_NEXT_LEVEL, this.handleNextLevel, this);
+        // Spawn Level Entities (now that physics is in correct state)
+        const { totalCorn } = this.entitySpawner.spawnLevel(this.currentLevel);
 
-        // Clean up listeners when scene shuts down
-        this.events.on(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+        // Connect Managers
+        this.powerUpManager.setFarmersGroup(this.entitySpawner.farmers);
+        this.collisionHandler.reset(totalCorn, this.score, this.lives);
+        this.collisionHandler.setupCollisions();
 
-        // Get map for current level
-        const map = this.getMap(this.currentLevel);
-
-        const mapWidth = map[0].length;
-        const mapHeight = map.length;
-
-        // Calculate tile size to fit screen
-        const gameWidth = this.game.config.width as number;
-        const gameHeight = this.game.config.height as number;
-
-        const tileSizeByWidth = Math.floor(gameWidth / mapWidth);
-        const tileSizeByHeight = Math.floor(gameHeight / mapHeight);
-
-        // Use the smaller tile size to ensure the entire map fits
-        this.tileSize = Math.min(tileSizeByWidth, tileSizeByHeight);
-
-        // Calculate offsets to center the map
-        const totalMapWidth = mapWidth * this.tileSize;
-        const totalMapHeight = mapHeight * this.tileSize;
-        this.offsetX = (gameWidth - totalMapWidth) / 2;
-        this.offsetY = (gameHeight - totalMapHeight) / 2;
-
-        // Create physics groups
-        this.walls = this.physics.add.staticGroup();
-        this.corn = this.physics.add.staticGroup();
-        this.powerups = this.physics.add.staticGroup();
-
-        // Power-up positions (3 strategic locations in interior)
-        const powerupPositions = [
-            { row: 3, col: 9 },   // Upper middle area
-            { row: 7, col: 5 },   // Left middle area
-            { row: 9, col: 14 },  // Right middle area
-        ];
-
-        // Draw the map
-        for (let row = 0; row < map.length; row++) {
-            for (let col = 0; col < map[row].length; col++) {
-                const x = this.offsetX + col * this.tileSize + this.tileSize / 2;
-                const y = this.offsetY + row * this.tileSize + this.tileSize / 2;
-
-                if (map[row][col] === 1) {
-                    // Blue wall
-                    const wall = this.add.rectangle(x, y, this.tileSize, this.tileSize, 0x0000ff);
-                    this.physics.add.existing(wall, true);
-                    this.walls.add(wall);
-                } else if (map[row][col] === 0 || map[row][col] === 2) {
-                    // Check if this should be a power-up (from static map or generated map)
-                    // For static maps (level 1 & 2), we use the powerupPositions array
-                    // For generated maps (level 3+), we use the map value 2
-
-                    let isPowerupLocation = false;
-
-                    if (this.currentLevel <= 2) {
-                        isPowerupLocation = powerupPositions.some(p => p.row === row && p.col === col);
-                    } else {
-                        isPowerupLocation = map[row][col] === 2;
-                    }
-
-                    if (isPowerupLocation) {
-                        // Power-up pill
-                        const powerupSprite = this.powerups.create(x, y, 'powerup');
-                        powerupSprite.setScale(this.tileSize * 0.4 / powerupSprite.width);
-                        powerupSprite.refreshBody();
-                    } else {
-                        // Corn pellet
-                        const cornSprite = this.corn.create(x, y, 'corn');
-                        cornSprite.setScale(this.tileSize * 0.3 / cornSprite.width);
-                        cornSprite.refreshBody();
-                        this.totalCorn++;
-                    }
-                }
-            }
-        }
-
-        // Create turkey at center position (middle of the map)
-        const centerCol = Math.floor(mapWidth / 2);
-        const centerRow = Math.floor(mapHeight / 2);
-        this.turkeyStartX = this.offsetX + centerCol * this.tileSize + this.tileSize / 2;
-        this.turkeyStartY = this.offsetY + centerRow * this.tileSize + this.tileSize / 2;
-        this.turkey = this.physics.add.sprite(this.turkeyStartX, this.turkeyStartY, 'turkey');
-
-        // Scale turkey to fit within tile
-        const turkeyScale = (this.tileSize * 0.8) / this.turkey.width;
-        this.turkey.setScale(turkeyScale);
-
-        // Set up physics for turkey
-        this.turkey.setCollideWorldBounds(true);
-
-        // Add collision between turkey and walls
-        this.physics.add.collider(this.turkey, this.walls);
-
-        // Add overlap detection between turkey and corn
-        this.physics.add.overlap(this.turkey, this.corn, this.collectCorn, undefined, this);
-
-        // Add overlap detection between turkey and power-ups
-        this.physics.add.overlap(this.turkey, this.powerups, this.collectPowerup, undefined, this);
-
-        // Create farmers group
-        this.farmers = this.physics.add.group({
-            classType: Farmer,
-            runChildUpdate: true,
-        });
-
-        // Add 3 farmers at different spread out positions
-        const farmerPositions = [
-            { row: 3, col: 3 },   // Top-left area
-            { row: 3, col: 16 },  // Top-right area
-            { row: 9, col: 10 },  // Bottom-center area
-        ];
-
-        farmerPositions.forEach(pos => {
-            const farmerX = this.offsetX + pos.col * this.tileSize + this.tileSize / 2;
-            const farmerY = this.offsetY + pos.row * this.tileSize + this.tileSize / 2;
-            const farmer = new Farmer(this, farmerX, farmerY, 'farmer', this.turkey);
-            const farmerScale = (this.tileSize * 0.8) / farmer.width;
-            farmer.setScale(farmerScale);
-            this.farmers!.add(farmer);
-        });
-
-        // Add collision between farmers and walls
-        this.physics.add.collider(this.farmers, this.walls);
-
-        // Add overlap detection between turkey and farmers
-        this.physics.add.overlap(this.turkey, this.farmers, this.handleFarmerCollision, undefined, this);
-
-        // Set up arrow keys
+        // Setup Input
         if (this.input.keyboard) {
             this.cursors = this.input.keyboard.createCursorKeys();
 
@@ -214,282 +99,75 @@ export default class MainScene extends Phaser.Scene {
             });
         }
 
-        // Emit initial score and lives
+        // Emit initial UI events
         gameEvents.emit(EVENTS.SCORE_CHANGED, this.score);
         gameEvents.emit(EVENTS.LIVES_CHANGED, this.lives);
         gameEvents.emit(EVENTS.LEVEL_CHANGED, this.currentLevel);
     }
 
-    private getMap(level: number): number[][] {
-        // If we already have a map for this level (and it's not a restart of a previous level we cleared), return it
-        // Actually, we want to keep the map if we are restarting the SAME level.
-        // If we moved to a NEW level, create should have cleared currentMap.
-        if (this.currentMap.length > 0) {
-            return this.currentMap;
-        }
+    private setupEventListeners() {
+        // Remove existing listeners to avoid duplicates
+        gameEvents.off(EVENTS.GAME_START, this.handleGameStart, this);
+        gameEvents.off(EVENTS.GAME_RESTART, this.handleRestart, this);
+        gameEvents.off(EVENTS.GAME_NEXT_LEVEL, this.handleNextLevel, this);
+        gameEvents.off(EVENTS.SCORE_CHANGED, this.handleScoreChanged, this);
+        this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
 
-        if (level === 1) {
-            // Level 1 Map (Default)
-            this.currentMap = [
-                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
-                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
-                [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
-                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
-                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1],
-                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
-                [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1],
-                [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            ];
-        } else if (level === 2) {
-            // Level 2 Map
-            this.currentMap = [
-                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-                [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1],
-                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
-                [1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1],
-                [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-                [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1],
-                [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-                [1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1],
-                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
-                [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1],
-                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            ];
-        } else {
-            // Level 3+ : Procedural Generation
-            const generator = new LevelGenerator(20, 13);
-            this.currentMap = generator.generate();
-        }
-
-        return this.currentMap;
+        // Add listeners
+        gameEvents.on(EVENTS.GAME_START, this.handleGameStart, this);
+        gameEvents.on(EVENTS.GAME_RESTART, this.handleRestart, this);
+        gameEvents.on(EVENTS.GAME_NEXT_LEVEL, this.handleNextLevel, this);
+        gameEvents.on(EVENTS.SCORE_CHANGED, this.handleScoreChanged, this);
+        this.events.on(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
     }
 
-    private collectCorn(_turkey: any, corn: any) {
-        // Remove the corn
-        corn.disableBody(true, true);
-
-        // Increment score (corn = 1 point)
-        this.score += 1;
-        this.cornCount++;
-
-        // Play eat sound
-        this.soundManager.playEat();
-
-        // Emit score change event
-        gameEvents.emit(EVENTS.SCORE_CHANGED, this.score);
-
-
-        // Check win condition
-        if (this.cornCount >= this.totalCorn) {
-            this.handleWin();
-        }
+    private handleScoreChanged(newScore: number) {
+        // Keep MainScene's score in sync with CollisionHandler's score
+        this.score = newScore;
     }
 
-    private collectPowerup(_turkey: any, powerup: any) {
-        // Remove the powerup
-        powerup.disableBody(true, true);
-
-        // Play powerup sound
-        this.soundManager.playPowerUp();
-
-        // Activate powerup for X seconds
-        this.activatePowerup();
+    private handleGameStart() {
+        console.log('MainScene: handleGameStart');
+        this.physics.resume();
     }
 
-    private activatePowerup() {
-        this.powerupActive = true;
-
-        // Make all farmers scared
-        this.farmers?.getChildren().forEach((farmer: any) => {
-            if (farmer instanceof Farmer) {
-                farmer.becomeScared(10000); // 10 seconds
-            }
-        });
-
-        // Clear existing timer if any
-        if (this.powerupTimer) {
-            this.powerupTimer.remove();
-        }
-
-        // Set timer to deactivate powerup
-        this.powerupTimer = this.time.addEvent({
-            delay: 10000,
-            callback: () => {
-                this.powerupActive = false;
-                this.powerupTimer = undefined;
-            }
-        });
+    private handleRestart() {
+        console.log('MainScene: handleRestart - calling scene.restart');
+        this.scene.restart({ isRestart: true, level: this.currentLevel, score: 0, autoStart: true });
     }
 
-    private handleFarmerCollision(_turkey: any, farmer: any) {
-        if (this.gameOver) return;
-
-        const farmerObj = farmer as Farmer;
-
-        if (this.powerupActive && farmerObj.isScared) {
-            // Eat the farmer!
-            this.score += 10; // Farmer = 10 points
-            gameEvents.emit(EVENTS.SCORE_CHANGED, this.score);
-
-            // Respawn farmer at farthest corner
-            this.respawnFarmer(farmerObj);
-        } else if (!farmerObj.isScared) {
-            // Play die sound
-            this.soundManager.playDie();
-
-            // Normal collision - lose a life
-            this.lives--;
-            gameEvents.emit(EVENTS.LIVES_CHANGED, this.lives);
-
-            if (this.lives <= 0) {
-                // Game over
-                this.gameOver = true;
-                this.physics.pause();
-
-                // Emit game over event
-                gameEvents.emit(EVENTS.GAME_OVER, this.score);
-            } else {
-                // Respawn turkey at starting position
-                this.respawnTurkey();
-            }
-        }
-    }
-
-    private respawnFarmer(farmer: Farmer) {
-        if (!this.turkey) return;
-
-        // Find the farthest corner from turkey
-        const corners = [
-            { row: 1, col: 1 },
-            { row: 1, col: 18 },
-            { row: 11, col: 1 },
-            { row: 11, col: 18 },
-        ];
-
-        let farthestCorner = corners[0];
-        let maxDistance = 0;
-
-        corners.forEach(corner => {
-            const x = this.offsetX + corner.col * this.tileSize + this.tileSize / 2;
-            const y = this.offsetY + corner.row * this.tileSize + this.tileSize / 2;
-            const distance = Phaser.Math.Distance.Between(this.turkey!.x, this.turkey!.y, x, y);
-
-            if (distance > maxDistance) {
-                maxDistance = distance;
-                farthestCorner = corner;
-            }
-        });
-
-        // Respawn at farthest corner
-        const newX = this.offsetX + farthestCorner.col * this.tileSize + this.tileSize / 2;
-        const newY = this.offsetY + farthestCorner.row * this.tileSize + this.tileSize / 2;
-        farmer.setPosition(newX, newY);
-        farmer.recover(); // Reset to normal state
-    }
-
-    private respawnTurkey() {
-        if (!this.turkey) return;
-
-        // Pause briefly
-        this.physics.pause();
-
-        // Flash effect
-        this.tweens.add({
-            targets: this.turkey,
-            alpha: 0.3,
-            duration: 100,
-            yoyo: true,
-            repeat: 3,
-            onComplete: () => {
-                // Reset position
-                this.turkey?.setPosition(this.turkeyStartX, this.turkeyStartY);
-                this.turkey?.setAlpha(1);
-
-                // Resume physics
-                this.physics.resume();
-            }
-        });
+    private handleNextLevel() {
+        console.log('MainScene: handleNextLevel - calling scene.restart', this.currentLevel + 1);
+        this.scene.restart({ isRestart: true, level: this.currentLevel + 1, score: this.score, autoStart: true });
     }
 
     private handleWin() {
         this.gameOver = true;
         this.physics.pause();
-
-        // Play win sound
         this.soundManager.playWin();
-
         gameEvents.emit(EVENTS.GAME_WIN);
     }
 
-    private handleGameStart() {
-        this.physics.resume();
-    }
-
     private shutdown() {
+        console.log('MainScene: shutdown');
         gameEvents.off(EVENTS.GAME_START, this.handleGameStart, this);
         gameEvents.off(EVENTS.GAME_RESTART, this.handleRestart, this);
         gameEvents.off(EVENTS.GAME_NEXT_LEVEL, this.handleNextLevel, this);
-    }
-
-    private handleNextLevel() {
+        gameEvents.off(EVENTS.SCORE_CHANGED, this.handleScoreChanged, this);
         this.cleanup();
-        this.scene.restart({ isRestart: true, level: this.currentLevel + 1 });
     }
 
     private cleanup() {
-        // Clean up power-up timer
-        if (this.powerupTimer) {
-            this.powerupTimer.remove();
-            this.powerupTimer = undefined;
-        }
-
-        // Clean up existing objects
-        this.walls?.clear(true, true);
-        this.corn?.clear(true, true);
-        this.powerups?.clear(true, true);
-        this.farmers?.clear(true, true);
-        this.turkey?.destroy();
-
-        // Remove all tweens and timers
+        this.powerUpManager?.cleanup();
+        this.entitySpawner?.cleanup();
         this.tweens.killAll();
         this.time.removeAllEvents();
     }
 
-    private handleRestart() {
-        this.cleanup();
-
-        // Restart the scene with isRestart flag, keeping current level
-        this.scene.restart({ isRestart: true, level: this.currentLevel });
-    }
-
     update() {
-        if (this.gameOver || !this.cursors || !this.turkey) return;
+        if (this.gameOver || !this.cursors || !this.entitySpawner.turkey) return;
 
-        const speed = 200;
-
-        // Reset velocity
-        this.turkey.setVelocity(0);
-
-        // Handle arrow key input
-        if (this.cursors.left.isDown) {
-            this.turkey.setVelocityX(-speed);
-            this.turkey.setFlipX(true);
-        } else if (this.cursors.right.isDown) {
-            this.turkey.setVelocityX(speed);
-            this.turkey.setFlipX(false);
-        }
-
-        if (this.cursors.up.isDown) {
-            this.turkey.setVelocityY(-speed);
-        } else if (this.cursors.down.isDown) {
-            this.turkey.setVelocityY(speed);
-        }
+        // Delegate input handling to Turkey entity
+        this.entitySpawner.turkey.handleInput(this.cursors);
     }
 }
